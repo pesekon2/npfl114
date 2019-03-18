@@ -11,7 +11,7 @@ from mnist import MNIST
 
 # Parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--activation", default="none", type=str, help="Activation function.")
+parser.add_argument("--activation", default="none", type=str, help="Activation function.", choices=['none', 'relu', 'tanh', 'sigmoid'])
 parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
 parser.add_argument("--epochs", default=10, type=int, help="Number of epochs.")
 parser.add_argument("--hidden_layer", default=100, type=int, help="Size of the hidden layer.")
@@ -39,13 +39,22 @@ args.logdir = os.path.join("logs", "{}-{}-{}".format(
 mnist = MNIST()
 
 # Create the model
-model = tf.keras.Sequential([
-    tf.keras.layers.InputLayer((MNIST.H, MNIST.W, MNIST.C)),
-    tf.keras.layers.Flatten(),
-    # TODO: Add `args.layers` number of hidden layers with size `args.hidden_layer`,
-    # using activation from `args.activation`, allowing "none", "relu", "tanh", "sigmoid".
-    tf.keras.layers.Dense(MNIST.LABELS, activation=tf.nn.softmax),
-])
+model = tf.keras.Sequential()
+model.add(tf.keras.layers.InputLayer((MNIST.H, MNIST.W, MNIST.C)))
+model.add(tf.keras.layers.Flatten())
+
+# TODO: Add `args.layers` number of hidden layers with size `args.hidden_layer`,
+# using activation from `args.activation`, allowing "none", "relu", "tanh", "sigmoid".
+if args.activation == 'none':
+    activation = None
+else:
+    activation = args.activation
+
+for i in range(args.layers):
+    model.add(tf.keras.layers.Dense(args.hidden_layer,
+                                    activation=activation,
+                                    name='hidden_{}'.format(i)))
+model.add(tf.keras.layers.Dense(MNIST.LABELS, activation=tf.nn.softmax))
 
 model.compile(
     optimizer=tf.keras.optimizers.Adam(),
@@ -69,4 +78,5 @@ tb_callback.on_epoch_end(1, dict(("val_test_" + metric, value) for metric, value
 
 # TODO: Write test accuracy as percentages rounded to two decimal places.
 with open("mnist_layers_activations.out", "w") as out_file:
+    accuracy = test_logs[1]
     print("{:.2f}".format(100 * accuracy), file=out_file)
