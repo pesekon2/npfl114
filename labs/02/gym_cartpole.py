@@ -10,9 +10,13 @@ import tensorflow as tf
 # Parse arguments
 # TODO: Set reasonable defaults and possibly add more arguments.
 parser = argparse.ArgumentParser()
-parser.add_argument("--batch_size", default=None, type=int, help="Batch size.")
-parser.add_argument("--epochs", default=None, type=int, help="Number of epochs.")
+parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
+parser.add_argument("--epochs", default=300, type=int, help="Number of epochs.")
 parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+parser.add_argument("--layers", default=0, type=int, help="Number of hidden layers.")
+parser.add_argument('--activation', default='relu', type=str, help="Activation function.", choices=['relu', 'tanh', 'sigmoid'])
+parser.add_argument('--activation_end', default='softmax', type=str, help="Activation function for the last layer.", choices=['softmax', 'sigmoid'])
+parser.add_argument("--hidden_layer", default=50, type=int, help="Size of the hidden layer.")
 args = parser.parse_args()
 
 # Fix random seeds
@@ -22,11 +26,11 @@ tf.config.threading.set_inter_op_parallelism_threads(args.threads)
 tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
 # Create logdir name
-args.logdir = os.path.join("logs", "{}-{}-{}".format(
+args.logdir = "logs/{}-{}-{}".format(
     os.path.basename(__file__),
     datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
     ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", key), value) for key, value in sorted(vars(args).items())))
-))
+)
 
 # Load the data
 observations, labels = [], []
@@ -41,7 +45,18 @@ observations, labels = np.array(observations), np.array(labels)
 # However, beware that there is currently a bug in Keras which does
 # not correctly serialize InputLayer. Instead of using an InputLayer,
 # pass explicitly `input_shape` to the first real model layer.
-model = None
+model = tf.keras.Sequential()
+# model.add(tf.keras.layers.InputLayer((observations.shape[1],)))
+# model.add(tf.keras.layers.Flatten())
+model.add(tf.keras.layers.Dense(args.hidden_layer,
+                                input_shape=(observations.shape[1],)))
+
+for i in range(args.layers):
+    model.add(tf.keras.layers.Dense(args.hidden_layer,
+                                    activation=args.activation,
+                                    name='hidden_{}'.format(i)))
+
+model.add(tf.keras.layers.Dense(2, activation=args.activation_end))
 
 model.compile(
     optimizer=tf.keras.optimizers.Adam(),
