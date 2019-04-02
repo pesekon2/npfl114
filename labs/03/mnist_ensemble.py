@@ -26,6 +26,8 @@ tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 # Load data
 mnist = MNIST()
 
+a = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
+
 # Create models
 models = []
 for model in range(args.models):
@@ -33,7 +35,8 @@ for model in range(args.models):
         tf.keras.utils.get_custom_objects()["glorot_uniform"] = lambda: tf.keras.initializers.glorot_uniform(seed=42 + model)
 
     models.append(tf.keras.Sequential([
-        tf.keras.layers.Flatten(input_shape=[MNIST.H, MNIST.W, MNIST.C]),
+        a,
+        tf.keras.layers.Flatten(),#input_shape=[MNIST.H, MNIST.W, MNIST.C]),
     ] + [tf.keras.layers.Dense(hidden_layer, activation=tf.nn.relu) for hidden_layer in args.hidden_layers] + [
         tf.keras.layers.Dense(MNIST.LABELS, activation=tf.nn.softmax),
     ]))
@@ -41,7 +44,7 @@ for model in range(args.models):
     models[-1].compile(
         optimizer=tf.keras.optimizers.Adam(),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(),
-        metrics=[tf.keras.metrics.SparseCategoricalAccuracy(name="individual_accuracy")],
+        metrics=[tf.keras.metrics.SparseCategoricalAccuracy(name="individual_accuracy_{}".format(model))],
     )
 
     print("Training model {}: ".format(model + 1), end="", flush=True)
@@ -55,7 +58,10 @@ with open("mnist_ensemble.out", "w") as out_file:
     for model in range(args.models):
         # TODO: Compute the accuracy on the dev set for
         # the individual `models[model]`.
-        individual_accuracy = None
+        test_logs = models[model].evaluate(mnist.dev.data["images"],
+                                           mnist.dev.data["labels"],
+                                           batch_size=args.batch_size)
+        individual_accuracy = test_logs[1]
 
         # TODO: Compute the accuracy on the dev set for
         # the ensemble `models[0:model+1].
@@ -73,7 +79,23 @@ with open("mnist_ensemble.out", "w") as out_file:
         #    and instead call `model.predict` on individual models and
         #    average the results. To measure accuracy, either do it completely
         #    manually or use tf.keras.metrics.SparseCategoricalAccuracy.
-        ensemble_accuracy = None
+
+        if len(models[:model+1]) >= 2:
+            ensembled = tf.keras.Model(
+                inputs=a,
+                outputs=tf.keras.layers.Average()([i.output for i in models[:model+1]]))
+            ensembled.compile(
+                optimizer=tf.keras.optimizers.Adam(),
+                loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                metrics=[tf.keras.metrics.SparseCategoricalAccuracy(
+                    name="ensembled_accuracy")],
+            )
+            test_logs = ensembled.evaluate(mnist.dev.data["images"],
+                                           mnist.dev.data["labels"],
+                                           batch_size=args.batch_size)
+            ensemble_accuracy = test_logs[1]
+        else:
+            ensemble_accuracy = individual_accuracy
 
         # Print the results.
         print("{:.2f} {:.2f}".format(100 * individual_accuracy, 100 * ensemble_accuracy), file=out_file)
