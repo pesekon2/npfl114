@@ -2,8 +2,6 @@
 #### Date: Deadline: Apr 14, 23:59
 #### Points: 5-11 points
 
-**The assignment is not yet in ReCodEx, it will appear there soon.**
-
 This assignment is a simple image segmentation task. The data for this task is
 available through the [fashion_masks_data.py](https://github.com/ufal/npfl114/tree/master/labs/05/fashion_masks_data.py)
 The inputs consist of 28×28 greyscale images of ten classes of clothing,
@@ -12,7 +10,8 @@ while the outputs consist of the correct class _and_ a pixel bit mask.
 This is an _open-data task_, where you submit only the test set annotations
 together with the training script (which will not be executed, it will be
 only used to understand the approach you took, and to indicate teams).
-Explicitly, submit **exactly one .txt file** and **at least one .py file**.
+Explicitly, submit **exactly one `.txt` file** and **at least one `.py` file**.
+**Note that all `.zip` files you submit will be extracted first.**
 
 Performance is evaluated using mean IoU, where IoU for a single example
 is defined as an intersection of the gold and system mask divided by
