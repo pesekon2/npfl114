@@ -24,6 +24,9 @@ class Network(tf.keras.Model):
         # - `D-hidden_layer_size`: Add a dense layer with ReLU activation and specified size.
         # Produce the results in variable `hidden`.
 
+        layers = args.cnn.split(',')
+        hidden = self._create_hidden_layers(layers, inputs)
+
         # Add the final output layer
         outputs = tf.keras.layers.Dense(MNIST.LABELS, activation=tf.nn.softmax)(hidden)
 
@@ -37,6 +40,51 @@ class Network(tf.keras.Model):
 
         self.tb_callback=tf.keras.callbacks.TensorBoard(args.logdir, update_freq=1000, profile_batch=1)
         self.tb_callback.on_train_end = lambda *_: None
+
+    def _create_hidden_layers(self, layers, x):
+        end_of_block = False
+        for layer in layers:
+            parameters = layer.split('-')
+
+            if 'R' in parameters[0]:
+                parameters.pop(0)
+                parameters[0] = parameters[0][1:]
+                residual_input = x
+
+            if parameters[-1][-1] == ']':
+                parameters[-1] = parameters[-1][:-1]
+                end_of_block = True
+
+            if parameters[0] == 'C':
+                x = tf.keras.layers.Conv2D(filters=int(parameters[1]),
+                                           kernel_size=int(parameters[2]),
+                                           strides=int(parameters[3]),
+                                           padding=parameters[4],
+                                           activation='relu')(x)
+            elif parameters[0] == 'CB':
+                x = tf.keras.layers.Conv2D(filters=int(parameters[1]),
+                                           kernel_size=int(parameters[2]),
+                                           strides=int(parameters[3]),
+                                           padding=parameters[4],
+                                           use_bias=False)(x)
+                x = tf.keras.layers.BatchNormalization()(x)
+                x = tf.keras.layers.ReLU()(x)
+            elif parameters[0] == 'M':
+                x = tf.keras.layers.MaxPool2D(pool_size=int(parameters[1]),
+                                              strides=int(parameters[2]))(x)
+            elif parameters[0] == 'F':
+                x = tf.keras.layers.Flatten()(x)
+            elif parameters[0] == 'D':
+                x = tf.keras.layers.Dense(int(parameters[1]),
+                                          activation='relu')(x)
+            else:
+                raise ValueError('Type of layer not supported.')
+
+            if end_of_block == True:
+                x = tf.keras.layers.Add()([x, residual_input])
+                end_of_block = False
+
+        return x
 
     def train(self, mnist, args):
         self.fit(
