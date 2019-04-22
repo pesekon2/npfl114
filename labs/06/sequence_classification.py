@@ -5,16 +5,20 @@ import tensorflow as tf
 # Dataset for generating sequences, with labels predicting whether the cumulative sum
 # is odd/even.
 class Dataset:
-    def __init__(self, sequences_num, sequence_length, sequence_dim, seed, shuffle_batches=True):
-        sequences = np.zeros([sequences_num, sequence_length, sequence_dim], np.int32)
+    def __init__(self, sequences_num, sequence_length, sequence_dim, seed,
+                 shuffle_batches=True):
+        sequences = np.zeros([sequences_num, sequence_length, sequence_dim],
+                             np.int32)
         labels = np.zeros([sequences_num, sequence_length, 1], np.bool)
         generator = np.random.RandomState(seed)
         for i in range(sequences_num):
-            sequences[i, :, 0] = generator.random_integers(0, max(1, sequence_dim - 1), size=[sequence_length])
+            sequences[i, :, 0] = generator.random_integers(
+                0, max(1, sequence_dim - 1), size=[sequence_length])
             labels[i, :, 0] = np.bitwise_and(np.cumsum(sequences[i, :, 0]), 1)
             if sequence_dim > 1:
                 sequences[i] = np.eye(sequence_dim)[sequences[i, :, 0]]
-        self._data = {"sequences": sequences.astype(np.float32), "labels": labels}
+        self._data = {"sequences": sequences.astype(np.float32),
+                      "labels": labels}
         self._size = sequences_num
 
         self._shuffler = np.random.RandomState(seed) if shuffle_batches else None
@@ -52,20 +56,51 @@ class Network:
         # `tf.keras.layers.LSTMCell` (the former can run transparently on a GPU
         # and is also considerably faster on a CPU).
 
+        predictions = self._build(sequences, args.rnn_cell, args.rnn_cell_dim,
+                                  args.hidden_layer)
+
         # TODO: If `args.hidden_layer` is defined, process the result using
         # a ReLU-activated fully connected layer with `args.hidden_layer` units.
 
         # TODO: Generate predictions using a fully connected layer
         # with one output and `tf.nn.sigmoid` activation.
         self.model = tf.keras.Model(inputs=sequences, outputs=predictions)
+        # super().__init__(inputs=sequences, outputs=predictions)
 
         # TODO: Create an Adam optimizer in self._optimizer
         # TODO: Create a suitable loss in self._loss
         # TODO: Create two metrics in self._metrics dictionary:
         #  - "loss", which is tf.metrics.Mean()
         #  - "accuracy", which is suitable accuracy
+
+        self._optimizer = tf.keras.optimizers.Adam()
+        self._loss = tf.keras.losses.BinaryCrossentropy()
+        self._metrics = {'loss': tf.metrics.Mean(),
+                         'accuracy': tf.metrics.BinaryAccuracy()}
+
         # TODO: Create a summary file writer using `tf.summary.create_file_writer`.
         # I usually add `flush_millis=10 * 1000` arguments to get the results reasonably quickly.
+        self._writer = tf.summary.create_file_writer(args.logdir, flush_millis=10000)
+
+    def _build(self, input, rnn_cell, dimension, hidden_layer):
+        if rnn_cell == 'LSTM':
+            x = tf.keras.layers.LSTM(units=dimension,
+                                    return_sequences=True)(input)
+        elif rnn_cell == 'GRU':
+            x = tf.keras.layers.GRU(units=dimension,
+                                   return_sequences=True)(input)
+        elif rnn_cell == 'SimpleRNN':
+            x = tf.keras.layers.SimpleRNN(units=dimension,
+                                          return_sequences=True)(input)
+        else:
+            raise AttributeError('RNN cell type not supported.')
+
+        if hidden_layer:
+            x = tf.keras.layers.Dense(int(hidden_layer), activation='relu')(x)
+
+        pred = tf.keras.layers.Dense(1, activation=tf.nn.sigmoid)(x)
+
+        return pred
 
     @tf.function
     def train_batch(self, batch, clip_gradient):
@@ -80,6 +115,18 @@ class Network:
         #
         # Apply the gradients using the `self._optimizer`
 
+        with tf.GradientTape() as tape:
+            probs = self.predict_batch(batch, training=True)
+            loss = self._loss(batch["labels"], probs)
+            gradient = tape.gradient(loss, self.model.variables)
+            if clip_gradient:
+                gradient, gradient_norm = tf.clip_by_global_norm(gradient,
+                                                                 clip_gradient)
+            else:
+                gradient_norm = tf.linalg.global_norm(gradient)
+
+            self._optimizer.apply_gradients(zip(gradient, self.model.variables))
+
         # Generate the summaries. Start by setting the current summary step using
         # `tf.summary.experimental.set_step(self._optimizer.iterations)`.
         # Then, use `with self._writer.as_default():` block and in the block
@@ -90,13 +137,25 @@ class Network:
         #   - then, add a summary using `tf.summary.scalar("train/" + name, metric.result())`
         # - Finall, add the gradient_norm using `tf.summary.scalar("train/gradient_norm", gradient_norm)`
 
+            tf.summary.experimental.set_step(self._optimizer.iterations)
+            with self._writer.as_default():
+                for name, metric in self._metrics.items():
+                    metric.reset_states()
+                    if name == 'loss':
+                        metric.apply(loss)
+                    else:
+                        metric.update_state(batch['labels'], probs)
+                    tf.summary.scalar("train/" + name, metric.result())
+                tf.summary.scalar("train/gradient_norm", gradient_norm)
+
+
     def train_epoch(self, dataset, args):
         for batch in dataset.batches(args.batch_size):
             self.train_batch(batch, args.clip_gradient)
 
     @tf.function
-    def predict_batch(self, batch):
-        return self.model(batch["sequences"], training=False)
+    def predict_batch(self, batch, training=False):
+        return self.model(batch["sequences"], training=training)
 
     def evaluate(self, dataset, args):
         # TODO: Similarly to training summaries, compute the metrics
@@ -112,8 +171,18 @@ class Network:
         #
         # Finally, create a dictionary `metrics` with results, using names and values in `self._metrics`.
         with self._writer.as_default():
-            for name, metric in metrics.items():
-                tf.summary.scalar("test/" + name, metric)
+            for name, metric in self._metrics.items():
+                # tf.summary.scalar("test/" + name, metric)
+                metric.reset_states()
+
+            for batch in dataset.batches(args.batch_size):
+                probs = self.predict_batch(batch)
+                loss = self._loss(batch['labels'], probs)
+                self._metrics['loss'].apply(loss)
+                self._metrics['accuracy'].update_state(batch['labels'], probs)
+
+            metrics = {'loss': self._metrics['loss'].result(),
+                       'accuracy': self._metrics['accuracy'].result()}
 
         return metrics
 
@@ -126,7 +195,7 @@ if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", default=16, type=int, help="Batch size.")
-    parser.add_argument("--clip_gradient", default=None, type=lambda x: None if x == "None" else float(x), help="Gradient clipping norm.",
+    parser.add_argument("--clip_gradient", default=None, type=lambda x: None if x == "None" else float(x), help="Gradient clipping norm.")
     parser.add_argument("--hidden_layer", default=None, type=lambda x: None if x == "None" else int(x), help="Dense layer after RNN.")
     parser.add_argument("--epochs", default=20, type=int, help="Number of epochs.")
     parser.add_argument("--rnn_cell", default="LSTM", type=str, help="RNN cell type.")
