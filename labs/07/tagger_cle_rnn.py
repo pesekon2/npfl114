@@ -40,24 +40,71 @@ class Network:
         # TODO(we): Add a softmax classification layer into `num_tags` classes, storing
         # the outputs in `predictions`.
 
-        self.model = tf.keras.Model(inputs=[word_ids, charseq_ids, charseqs], outputs=predictions)
+        word_ids, charseqs, charseq_ids, predictions = self._build(
+            args, num_words, num_tags, num_chars)
+
+        self.model = tf.keras.Model(inputs=[word_ids, charseq_ids, charseqs],
+                                    outputs=predictions)
 
         # TODO: Create an Adam optimizer in self._optimizer
+        self._optimizer = tf.optimizers.Adam()
         # TODO: Create a suitable loss in self._loss
+        self._loss = tf.losses.SparseCategoricalCrossentropy()
         # TODO: Create two metrics in self._metrics dictionary:
         #  - "loss", which is tf.metrics.Mean()
         #  - "accuracy", which is suitable accuracy
+        self._metrics = {
+            'loss': tf.metrics.Mean(),
+            'accuracy': tf.metrics.SparseCategoricalAccuracy(name="accuracy")}
+
         self._writer = tf.summary.create_file_writer(args.logdir, flush_millis=10 * 1000)
+
+    def _build(self, args, num_words, num_tags, num_chars):
+        word_ids = tf.keras.layers.Input(shape=(None,), dtype=tf.int32)
+        charseqs = tf.keras.layers.Input(shape=(None,), dtype=tf.int32)
+        charseq_ids = tf.keras.layers.Input(shape=(None,), dtype=tf.int32)
+
+        embeddings_charseqs = tf.keras.layers.Embedding(input_dim=num_chars,
+                                               output_dim=args.cle_dim,
+                                               mask_zero=True)(charseqs)
+
+        rnn_charseqs = tf.keras.layers.Bidirectional(tf.keras.layers.GRU(
+            units=args.cle_dim, return_sequences=False))(embeddings_charseqs)
+
+        gathered = tf.keras.layers.Lambda(lambda args: tf.gather(*args))([
+            rnn_charseqs, charseq_ids])
+
+        embeddings = tf.keras.layers.Embedding(input_dim=num_words,
+                                               output_dim=args.we_dim,
+                                               mask_zero=True)(word_ids)
+
+        concat = tf.keras.layers.concatenate([embeddings, gathered], axis=2)
+
+        if args.rnn_cell == 'LSTM':
+            rnn_cell = tf.keras.layers.Bidirectional(
+                tf.keras.layers.LSTM(units=args.rnn_cell_dim,
+                                     return_sequences=True))(concat)
+        else:
+            rnn_cell = tf.keras.layers.Bidirectional(
+                tf.keras.layers.GRU(units=args.rnn_cell_dim,
+                                    return_sequences=True))(concat)
+
+        preds = tf.keras.layers.Dense(num_tags, activation='softmax')(rnn_cell)
+
+        return word_ids, charseqs, charseq_ids, preds
 
     @tf.function(input_signature=[[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 3,
                                   tf.TensorSpec(shape=[None, None], dtype=tf.int32)])
     def train_batch(self, inputs, tags):
         # TODO: Generate a mask from `tags` containing ones in positions
         # where tags are nonzero (using `tf.not_equal`).
+        mask = tf.not_equal(tags, 0)
         with tf.GradientTape() as tape:
             probabilities = self.model(inputs, training=True)
             # TODO: Compute `loss` using `self._loss`, passing the generated
             # tag mask as third parameter.
+            loss = self._loss(tags, probabilities, mask)
+
         gradients = tape.gradient(loss, self.model.variables)
         self._optimizer.apply_gradients(zip(gradients, self.model.variables))
 
@@ -68,6 +115,7 @@ class Network:
                 if name == "loss": metric(loss)
                 else: # TODO: Update the `metric` using gold `tags` and generated `probabilities`,
                       # passing the tag mask as third argument.
+                    metric.update_state(tags, probabilities, mask)
                 tf.summary.scalar("train/{}".format(name), metric.result())
 
     def train_epoch(self, dataset, args):
@@ -80,19 +128,26 @@ class Network:
     def evaluate_batch(self, inputs, tags):
         # TODO: Again generate a mask from `tags` containing ones in positions
         # where tags are nonzero (using `tf.not_equal`).
+        mask = tf.not_equal(tags, 0)
         probabilities = self.model(inputs, training=False)
         # TODO: Compute `loss` using `self._loss`, passing the generated
         # tag mask as third parameter.
+        loss = self._loss(tags, probabilities, mask)
         for name, metric in self._metrics.items():
             if name == "loss": metric(loss)
             else: # TODO: Update the `metric` using gold `tags` and generated `probabilities`,
                   # passing the tag mask as third argument.
+                metric.update_state(tags, probabilities, mask)
 
     def evaluate(self, dataset, dataset_name, args):
         for metric in self._metrics.values():
             metric.reset_states()
         for batch in dataset.batches(args.batch_size):
             # TODO: Evaluate the given match, using the same inputs as in training.
+            self.evaluate_batch([batch[dataset.FORMS].word_ids,
+                                 batch[dataset.FORMS].charseq_ids,
+                                 batch[dataset.FORMS].charseqs],
+                                batch[dataset.TAGS].word_ids)
 
         metrics = {name: metric.result() for name, metric in self._metrics.items()}
         with self._writer.as_default():

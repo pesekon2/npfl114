@@ -20,12 +20,31 @@ class Network:
         # TODO: Add a softmax classification layer into `num_tags` classes, storing
         # the outputs in `predictions`.
 
+        word_ids, predictions = self._build(args, num_words, num_tags)
+
         self.model = tf.keras.Model(inputs=word_ids, outputs=predictions)
         self.model.compile(optimizer=tf.optimizers.Adam(),
                            loss=tf.losses.SparseCategoricalCrossentropy(),
                            metrics=[tf.metrics.SparseCategoricalAccuracy(name="accuracy")])
 
         self._writer = tf.summary.create_file_writer(args.logdir, flush_millis=10 * 1000)
+
+    def _build(self, args, num_words, num_tags):
+        word_ids = tf.keras.layers.Input(shape=(None,))
+        embeddings = tf.keras.layers.Embedding(input_dim=num_words,
+                                               output_dim=args.we_dim,
+                                               mask_zero=True)(word_ids)
+        if args.rnn_cell == 'LSTM':
+            rnn_cell = tf.keras.layers.Bidirectional(
+                tf.keras.layers.LSTM(units=args.rnn_cell_dim,
+                                     return_sequences=True))(embeddings)
+        else:
+            rnn_cell = tf.keras.layers.Bidirectional(
+                tf.keras.layers.GRU(units=args.rnn_cell_dim,
+                                    return_sequences=True))(embeddings)
+        preds = tf.keras.layers.Dense(num_tags, activation='softmax')(rnn_cell)
+
+        return word_ids, preds
 
     def train_epoch(self, dataset, args):
         for batch in dataset.batches(args.batch_size):
@@ -37,6 +56,10 @@ class Network:
             # Additionally, pass `reset_metrics=True`.
             #
             # Store the computed metrics in `metrics`.
+            inputs = batch[dataset.FORMS].word_ids
+            targets = tf.expand_dims(batch[dataset.TAGS].word_ids, -1)
+            metrics = self.model.train_on_batch(inputs, targets,
+                                                reset_metrics=True)
 
             tf.summary.experimental.set_step(self.model.optimizer.iterations)
             with self._writer.as_default():
@@ -45,11 +68,17 @@ class Network:
 
     def evaluate(self, dataset, dataset_name, args):
         # We assume that model metric are resetted at this point.
+
+        self.model.reset_metrics()
         for batch in dataset.batches(args.batch_size):
             # TODO: Evaluate the given match, using the same inputs as in training.
             # Additionally, pass `reset_metrics=False` to aggregate the metrics.
             # Store the metrics of the last batch as `metrics`.
-        self.model.reset_metrics()
+            inputs = batch[dataset.FORMS].word_ids
+            targets = tf.expand_dims(batch[dataset.TAGS].word_ids, -1)
+            # inputs = np.expand_dims(batch[dataset.FORMS].word_ids, axis=2)[0]
+            # targets = np.expand_dims(batch[dataset.TAGS].word_ids, axis=2)[0]
+            metrics = self.model.test_on_batch(inputs, targets, reset_metrics=False)
 
         metrics = dict(zip(self.model.metrics_names, metrics))
         with self._writer.as_default():
