@@ -19,7 +19,7 @@ class Network:
 
                 # TODO(lemmatizer_noattn): Define
                 # - target_embedding as an unmasked embedding layer of target chars into args.cle_dim dimensions
-                # - source_rnn_cell as a GRUCell with args.rnn_dim units
+                # - target_rnn_cell as a GRUCell with args.rnn_dim units
                 # - target_output_layer as a Dense layer into `num_target_chars`
 
                 # TODO: Define
@@ -80,8 +80,7 @@ class Network:
                 def initialize(self, layer_inputs, initial_state=None):
                     self._model, self._source_encoded, self._targets = layer_inputs
 
-                    # TODO(lemmatizer_noattn): Define `finished` as False when self._targets[:, 0] is nonzero
-                    # and as True when it is zero. BTW, do not use == or !=.
+                    # TODO(lemmatozer_noattn): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
                     # TODO(lemmatizer_noattn): Define `inputs` as a vector of self.batch_size MorphoDataset.Factor.BOW [see tf.fill],
                     # embedded using self._model.target_embedding
                     # TODO: Define `states` as the last words from self._source_encoded
@@ -143,7 +142,6 @@ class Network:
             def output_size(self): raise NotImplemented() # TODO(lemmatizer_noattn): Return 1 because we are returning directly the predictions
             @property
             def output_dtype(self): return NotImplemented() # TODO(lemmatizer_noattn): Return tf.int32 because the predictions are integral
-            @property
 
             def _with_attention(self, inputs, states):
                 # TODO: A copy of _with_attention from train_batch; you can of course
@@ -152,7 +150,7 @@ class Network:
             def initialize(self, layer_inputs, initial_state=None):
                 self._model, self._source_encoded = layer_inputs
 
-                # TODO(lemmatizer_noattn): Define `finished` as a vector of self.batch_size containing Falses.
+                # TODO(lemmatizer_noattn)(train_batch): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
                 # TODO(lemmatizer_noattn)(train_batch): Define `inputs` as a vector of self.batch_size MorphoDataset.Factor.BOW [see tf.fill],
                 # embedded using self._model.target_embedding
                 # TODO(train_batch): Define `states` as the last words from self._source_encoded

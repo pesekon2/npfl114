@@ -16,7 +16,7 @@ class Network:
                 # - source_rnn as a bidirectional GRU with args.rnn_dim units, returning only the last state, summing opposite directions
 
                 # - target_embedding as an unmasked embedding layer of target chars into args.cle_dim dimensions
-                # - source_rnn_cell as a GRUCell with args.rnn_dim units
+                # - target_rnn_cell as a GRUCell with args.rnn_dim units
                 # - target_output_layer as a Dense layer into `num_target_chars`
 
         self._model = Model()
@@ -57,8 +57,7 @@ class Network:
                 def initialize(self, layer_inputs, initial_state=None):
                     self._model, self._source_states, self._targets = layer_inputs
 
-                    # TODO: Define `finished` as False when self._targets[:, 0] is nonzero
-                    # and as True when it is zero. BTW, do not use == or !=.
+                    # TODO: Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
                     # TODO: Define `inputs` as a vector of self.batch_size MorphoDataset.Factor.BOW [see tf.fill],
                     # embedded using self._model.target_embedding
                     # TODO: Define `states` as self._source_states
@@ -118,12 +117,11 @@ class Network:
             def output_size(self): raise NotImplemented() # TODO: Return 1 because we are returning directly the predictions
             @property
             def output_dtype(self): return NotImplemented() # TODO: Return tf.int32 because the predictions are integral
-            @property
 
             def initialize(self, layer_inputs, initial_state=None):
                 self._model, self._source_states = layer_inputs
 
-                # TODO: Define `finished` as a vector of self.batch_size containing Falses.
+                # TODO(train_batch): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
                 # TODO(train_batch): Define `inputs` as a vector of self.batch_size MorphoDataset.Factor.BOW [see tf.fill],
                 # embedded using self._model.target_embedding
                 # TODO(train_batch): Define `states` as self._source_states
