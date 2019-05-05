@@ -25,8 +25,10 @@ class Network:
                                                    output_dim=32,
                                                    mask_zero=True)(charseqs)
         gru = tf.keras.layers.Bidirectional(
-            tf.keras.layers.GRU(32, return_sequences=False),
-            kernel_regularizer=tf.keras.regularizers.L1L2(l2=0.01),
+            tf.keras.layers.GRU(
+                32,
+                kernel_regularizer=tf.keras.regularizers.L1L2(l2=0.01),
+                return_sequences=False),
             merge_mode="sum")(embedded_chars)
         replace = tf.keras.layers.Lambda(lambda args: tf.gather(*args))(
             [gru, charseq_ids])
