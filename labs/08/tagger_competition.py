@@ -22,21 +22,22 @@ class Network:
         charseqs = tf.keras.layers.Input(shape=(None,), dtype=tf.int32)
 
         embedded_chars = tf.keras.layers.Embedding(input_dim=num_chars,
-                                                   output_dim=args.cle_dim,
+                                                   output_dim=32,
                                                    mask_zero=True)(charseqs)
         gru_chars = tf.keras.layers.Bidirectional(
-            tf.keras.layers.GRU(args.cle_dim, return_sequences=False),
-            merge_mode="concat")(embedded_chars)
+            tf.keras.layers.GRU(32, return_sequences=False),
+            kernel_regularizer=tf.keras.regularizers.L1L2(l2=0.01),
+            merge_mode="sum")(embedded_chars)
         replace = tf.keras.layers.Lambda(lambda args: tf.gather(*args))(
             [gru_chars, charseq_ids])
         embedded_words = tf.keras.layers.Embedding(input_dim=num_words,
-                                                   output_dim=args.we_dim,
+                                                   output_dim=64,
                                                    mask_zero=True)(word_ids)
         concat = tf.keras.layers.Concatenate()([embedded_words, replace])
-        hidden = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(
-            args.rnn_dim, return_sequences=True), merge_mode="concat")(concat)
-        hidden = tf.keras.layers.Dense(80,"relu")(hidden)
-        preds = tf.keras.layers.Dense(num_tags, activation="softmax")(hidden)
+        lstm = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(
+            128, return_sequences=True), merge_mode="sum")(concat)
+        hidden = tf.keras.layers.Dense(80,"relu")(lstm)
+        preds = tf.keras.layers.Dense(num_tags, activation="softmax")(lstm)
 
         return [word_ids, charseq_ids, charseqs], preds
 
@@ -119,9 +120,6 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
     parser.add_argument("--epochs", default=200, type=int, help="Number of epochs.")
     parser.add_argument("--threads", default=0, type=int, help="Maximum number of threads to use.")
-    parser.add_argument("--cle_dim", default=32, type=int, help="Character lvl embedding dimension.")
-    parser.add_argument("--we_dim", default=64, type=int, help="Word lvl embedding dimension.")
-    parser.add_argument("--rnn_dim", default=128, type=int, help="RNN dimension.")
     args = parser.parse_args()
 
     # Fix random seeds and number of threads
