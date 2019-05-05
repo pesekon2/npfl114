@@ -18,10 +18,6 @@ class Network(tf.keras.Model):
                      loss=[tf.keras.losses.SparseCategoricalCrossentropy(),
                            tf.keras.losses.BinaryCrossentropy()],
                      metrics=['accuracy'])
-                     # metrics=[tf.keras.metrics.SparseCategoricalAccuracy(
-                     #            name='accuracy'),
-                     #          tf.keras.metrics.SparseCategoricalAccuracy(
-                     #            name='accuracy')])
 
         self.tb_callback = tf.keras.callbacks.TensorBoard(args.logdir)
         self.tb_callback.on_train_end = lambda *_: None
