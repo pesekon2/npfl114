@@ -24,20 +24,22 @@ class Network:
         embedded_chars = tf.keras.layers.Embedding(input_dim=num_chars,
                                                    output_dim=32,
                                                    mask_zero=True)(charseqs)
-        gru_chars = tf.keras.layers.Bidirectional(
+        gru = tf.keras.layers.Bidirectional(
             tf.keras.layers.GRU(32, return_sequences=False),
             kernel_regularizer=tf.keras.regularizers.L1L2(l2=0.01),
             merge_mode="sum")(embedded_chars)
         replace = tf.keras.layers.Lambda(lambda args: tf.gather(*args))(
-            [gru_chars, charseq_ids])
+            [gru, charseq_ids])
         embedded_words = tf.keras.layers.Embedding(input_dim=num_words,
                                                    output_dim=64,
                                                    mask_zero=True)(word_ids)
         concat = tf.keras.layers.Concatenate()([embedded_words, replace])
         lstm = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(
-            128, return_sequences=True), merge_mode="sum")(concat)
-        hidden = tf.keras.layers.Dense(80,"relu")(lstm)
-        preds = tf.keras.layers.Dense(num_tags, activation="softmax")(lstm)
+            128,
+            kernel_regularizer=tf.keras.regularizers.L1L2(l2=0.01),
+            return_sequences=True), merge_mode="sum")(concat)
+        dense = tf.keras.layers.Dense(80,"relu")(lstm)
+        preds = tf.keras.layers.Dense(num_tags, activation="softmax")(dense)
 
         return [word_ids, charseq_ids, charseqs], preds
 
