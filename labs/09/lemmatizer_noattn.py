@@ -13,7 +13,8 @@ class Network:
 
                 # TODO: Define
                 # - source_embeddings as a masked embedding layer of source chars into args.cle_dim dimensions
-                # - source_rnn as a bidirectional GRU with args.rnn_dim units, returning only the last state, summing opposite directions
+                # - source_rnn as a bidirectional GRU with args.rnn_dim units, returning only the last output
+                #   (i.e., return_sequences=False), summing opposite directions
 
                 # - target_embedding as an unmasked embedding layer of target chars into args.cle_dim dimensions
                 # - target_rnn_cell as a GRUCell with args.rnn_dim units
@@ -48,17 +49,17 @@ class Network:
 
             class DecoderTraining(decoder.BaseDecoder):
                 @property
-                def batch_size(self): raise NotImplemented() # TODO: Return batch size of self._source_states, using tf.shape
+                def batch_size(self): raise NotImplemented() # TODO: Return the batch size of self._source_states, using tf.shape
                 @property
-                def output_size(self): raise NotImplemented() # TODO: Return number of the generated logits
+                def output_size(self): raise NotImplemented() # TODO: Return the number of logits per each output
                 @property
-                def output_dtype(self): return NotImplemented() # TODO: Return the type of the generated logits
+                def output_dtype(self): raise NotImplemented() # TODO: Return the type of the logits
 
                 def initialize(self, layer_inputs, initial_state=None):
                     self._model, self._source_states, self._targets = layer_inputs
 
                     # TODO: Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
-                    # TODO: Define `inputs` as a vector of self.batch_size MorphoDataset.Factor.BOW [see tf.fill],
+                    # TODO: Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                     # embedded using self._model.target_embedding
                     # TODO: Define `states` as self._source_states
                     return finished, inputs, states
@@ -112,7 +113,7 @@ class Network:
 
         class DecoderPrediction(decoder.BaseDecoder):
             @property
-            def batch_size(self): raise NotImplemented() # TODO: Return batch size of self._source_states, using tf.shape
+            def batch_size(self): raise NotImplemented() # TODO(train_batch): Return the batch size of self._source_states, using tf.shape
             @property
             def output_size(self): raise NotImplemented() # TODO: Return 1 because we are returning directly the predictions
             @property
@@ -122,7 +123,7 @@ class Network:
                 self._model, self._source_states = layer_inputs
 
                 # TODO(train_batch): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
-                # TODO(train_batch): Define `inputs` as a vector of self.batch_size MorphoDataset.Factor.BOW [see tf.fill],
+                # TODO(train_batch): Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                 # embedded using self._model.target_embedding
                 # TODO(train_batch): Define `states` as self._source_states
                 return finished, inputs, states
